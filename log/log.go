@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"io"
 	"os"
-	"time"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
@@ -14,12 +13,9 @@ import (
 func Init(conf *Config) {
 	// This mostly should be the responsibility of the app itself but hey
 	zerolog.SetGlobalLevel(conf.Level)
-	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
-	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
-
-	zerolog.TimestampFunc = func() time.Time {
-		return time.Now().In(time.Local)
-	}
+	// FieldsExclude: []string{"ctx", "mode"},
+	output := CodecometWriter{Out: os.Stderr, TimeFormat: zerolog.TimeFormatUnix}
+	log.Logger = zerolog.New(output).With().Timestamp().Logger()
 }
 
 func SetLevel(lv Level) {
@@ -48,6 +44,23 @@ func ErrorSink(reader io.Reader) {
 	scanner := bufio.NewScanner(reader)
 	for scanner.Scan() {
 		log.Error().Msg(scanner.Text())
+	}
+}
+
+func LoggerForLevel(level string) *Event {
+	switch level {
+	case "debug":
+		return log.Debug()
+	case "info":
+		return log.Info()
+	case "warn":
+		return log.Warn()
+	case "error":
+		return log.Error()
+	case "fatal":
+		return log.Fatal()
+	default:
+		return log.Info()
 	}
 }
 
