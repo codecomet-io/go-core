@@ -64,23 +64,38 @@ func New(defaultBin string, envBin string) *Commander {
 	}
 }
 
-type Commander struct {
-	mu       *sync.Mutex
-	bin      string
-	Stdin    io.Reader
-	Env      map[string]string
-	PreArgs  []string
-	Dir      string
-	NoReport bool
+func (com *Commander) PreExec(stdin io.Reader, args ...string) {
+
+	args = append(com.PreArgs, args...)
+
+	envs := []string{}
+	for k, v := range com.Env {
+		envs = append(envs, fmt.Sprintf("%s=%s", k, v))
+	}
+
+	log.Debug().Str("binary", com.bin).Strs("arguments", args).Strs("env", envs).Msg("Preparing Command")
+
+	command := exec.Command(com.bin, args...) //nolint:gosec
+
+	if com.Dir != "" {
+		command.Dir = com.Dir
+	}
+
+	command.Env = append(os.Environ(), envs...)
+	command.Stdin = stdin
+
+	com.activeCommand = command
 }
 
 func (com *Commander) Attach(args ...string) error {
 	var err error
+
 	if com.Stdin != nil {
-		err = com.ExecPipes(com.Stdin, os.Stdout, os.Stderr, args...)
+		com.PreExec(com.Stdin, args...)
 	} else {
-		err = com.ExecPipes(os.Stdin, os.Stdout, os.Stderr, args...)
+		com.PreExec(os.Stdin, args...)
 	}
+	_, _, err = com.ExecAndComplete()
 
 	if err != nil && !com.NoReport {
 		reporter.CaptureException(fmt.Errorf("failed attached execution: %w", err))
@@ -91,49 +106,69 @@ func (com *Commander) Attach(args ...string) error {
 }
 
 func (com *Commander) Exec(args ...string) (string, string, error) {
-	var stdout bytes.Buffer
+	// prepare the command
+	com.PreExec(com.Stdin, args...)
 
-	var stderr bytes.Buffer
-
-	err := com.ExecPipes(com.Stdin, &stdout, &stderr, args...)
-	sout := stdout.String()
-	serr := stderr.String()
-
-	if !com.NoReport && err != nil {
-		reporter.CaptureException(fmt.Errorf("failed sub execution: %w - out: %s - err: %s", err, sout, serr))
-		log.Error().Err(err).Str("out", sout).Str("err", serr).Msg("Execution failed")
-	}
-
-	return sout, serr, err
+	return com.ExecAndComplete()
 }
 
-func (com *Commander) ExecPipes(stdin io.Reader, stdout io.Writer, stderr io.Writer, args ...string) error {
-	args = append(com.PreArgs, args...)
+func (com *Commander) ExecAndComplete() (string, string, error) {
+	command := com.activeCommand
 
-	envs := []string{}
-	for k, v := range com.Env {
-		envs = append(envs, fmt.Sprintf("%s=%s", k, v))
-	}
-
-	log.Debug().Str("binary", com.bin).Strs("arguments", args).Strs("env", envs).Msg("Executing command")
-
-	command := exec.Command(com.bin, args...) //nolint:gosec
-	if com.Dir != "" {
-		command.Dir = com.Dir
-	}
-
-	command.Env = append(os.Environ(), envs...)
-
-	command.Stdin = stdin
-	command.Stdout = stdout
-	command.Stderr = stderr
+	var stdout, stderr bytes.Buffer
+	command.Stdout = &stdout
+	command.Stderr = &stderr
 
 	com.mu.Lock()
 	err := command.Run()
 	com.mu.Unlock()
 
 	if err != nil {
-		err = fmt.Errorf("ExecPipes errored: %w", err)
+		err = fmt.Errorf("ExecAndComplete errored: %w", err)
+	}
+
+	log.Debug().Str("stdout", stdout.String()).Str("stderr", stderr.String()).Msg("ExecAndComplete Returning...")
+
+	return stdout.String(), stderr.String(), err
+}
+
+func (com *Commander) ExecWithBuffer(args ...string) (io.ReadCloser, io.ReadCloser, error) {
+
+	// prepare the command
+	com.PreExec(com.Stdin, args...)
+
+	sout, serr, err := com.ExecAndWait()
+
+	if !com.NoReport && err != nil {
+		reporter.CaptureException(fmt.Errorf("failed sub execution: %w - out: %s - err: %s", err, sout, serr))
+		log.Error().Err(err).Msg("Execution failed")
+	}
+
+	return sout, serr, err
+}
+
+func (com *Commander) ExecAndWait() (io.ReadCloser, io.ReadCloser, error) {
+	command := com.activeCommand
+
+	outpipe, _ := command.StdoutPipe()
+	errpipe, _ := command.StderrPipe()
+
+	err := command.Start()
+
+	if err != nil {
+		err = fmt.Errorf("ExecAndWait errored: %w", err)
+	}
+
+	return outpipe, errpipe, err
+}
+
+func (com *Commander) Wait() error {
+	command := com.activeCommand
+
+	err := command.Wait()
+
+	if err != nil {
+		err = fmt.Errorf("Wait errored: %w", err)
 	}
 
 	return err
