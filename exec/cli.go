@@ -14,6 +14,17 @@ import (
 	"go.codecomet.dev/core/reporter"
 )
 
+type Commander struct {
+    mu            *sync.Mutex
+    activeCommand *exec.Cmd
+    bin           string
+    Stdin         io.Reader
+    Env           map[string]string
+    PreArgs       []string
+    Dir           string
+    NoReport      bool
+}
+
 func Resolve(bin string) (string, error) {
 	o, err := exec.Command("which", bin).Output()
 	if err != nil {
