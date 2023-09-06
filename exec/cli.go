@@ -10,19 +10,27 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/kr/logfmt"
+
 	"go.codecomet.dev/core/log"
 	"go.codecomet.dev/core/reporter"
 )
 
 type Commander struct {
-    mu            *sync.Mutex
-    activeCommand *exec.Cmd
-    bin           string
-    Stdin         io.Reader
-    Env           map[string]string
-    PreArgs       []string
-    Dir           string
-    NoReport      bool
+	mu            *sync.Mutex
+	activeCommand *exec.Cmd
+	bin           string
+	Stdin         io.Reader
+	Env           map[string]string
+	PreArgs       []string
+	Dir           string
+	NoReport      bool
+}
+
+type LimaLogFormat struct {
+	Time  string
+	Level string
+	Msg   string
 }
 
 func Resolve(bin string) (string, error) {
@@ -76,7 +84,6 @@ func New(defaultBin string, envBin string) *Commander {
 }
 
 func (com *Commander) PreExec(stdin io.Reader, args ...string) {
-
 	args = append(com.PreArgs, args...)
 
 	envs := []string{}
@@ -106,7 +113,7 @@ func (com *Commander) Attach(args ...string) error {
 	} else {
 		com.PreExec(os.Stdin, args...)
 	}
-	_, _, err = com.ExecAndComplete()
+	_, _, err = com.Exec()
 
 	if err != nil && !com.NoReport {
 		reporter.CaptureException(fmt.Errorf("failed attached execution: %w", err))
@@ -116,14 +123,10 @@ func (com *Commander) Attach(args ...string) error {
 	return err
 }
 
-func (com *Commander) Exec(args ...string) (string, string, error) {
+func (com *Commander) Exec(args ...string) ([]LimaLogFormat, []LimaLogFormat, error) {
 	// prepare the command
 	com.PreExec(com.Stdin, args...)
 
-	return com.ExecAndComplete()
-}
-
-func (com *Commander) ExecAndComplete() (string, string, error) {
 	command := com.activeCommand
 
 	var stdout, stderr bytes.Buffer
@@ -135,16 +138,30 @@ func (com *Commander) ExecAndComplete() (string, string, error) {
 	com.mu.Unlock()
 
 	if err != nil {
-		err = fmt.Errorf("ExecAndComplete errored: %w", err)
+		err = fmt.Errorf("Exec errored: %w", err)
 	}
 
-	log.Debug().Str("stdout", stdout.String()).Str("stderr", stderr.String()).Msg("ExecAndComplete Returning...")
+	var stdOutLines []LimaLogFormat
+	var stdErrLines []LimaLogFormat
 
-	return stdout.String(), stderr.String(), err
+	for _, entry := range strings.Split(stdout.String(), "\n") {
+		rv, err := processLine(entry)
+		if err != nil {
+			stdOutLines = append(stdOutLines, rv)
+		}
+	}
+
+	for _, entry := range strings.Split(stderr.String(), "\n") {
+		rv, err := processLine(entry)
+		if err != nil {
+			stdErrLines = append(stdErrLines, rv)
+		}
+	}
+
+	return stdOutLines, stdErrLines, err
 }
 
 func (com *Commander) ExecWithBuffer(args ...string) (io.ReadCloser, io.ReadCloser, error) {
-
 	// prepare the command
 	com.PreExec(com.Stdin, args...)
 
@@ -165,7 +182,6 @@ func (com *Commander) ExecAndWait() (io.ReadCloser, io.ReadCloser, error) {
 	errpipe, _ := command.StderrPipe()
 
 	err := command.Start()
-
 	if err != nil {
 		err = fmt.Errorf("ExecAndWait errored: %w", err)
 	}
@@ -177,10 +193,20 @@ func (com *Commander) Wait() error {
 	command := com.activeCommand
 
 	err := command.Wait()
-
 	if err != nil {
 		err = fmt.Errorf("Wait errored: %w", err)
 	}
 
 	return err
+}
+
+func processLine(line string) (LimaLogFormat, error) {
+	var formatted LimaLogFormat
+
+	err := logfmt.Unmarshal([]byte(line), &formatted)
+	if err != nil {
+		fmt.Println(fmt.Errorf("logfmt.Unmarshal errored: %w", err))
+	}
+
+	return formatted, err
 }
