@@ -17,4 +17,7 @@ const (
 	NoLevel
 	// Disabled disables the logger.
 	Disabled
+
+	// TraceLevel defines trace log level.
+	TraceLevel Level = -1
 )

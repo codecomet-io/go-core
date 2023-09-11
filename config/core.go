@@ -6,6 +6,7 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"go.codecomet.dev/core/filesystem"
 	"go.codecomet.dev/core/log"
@@ -44,6 +45,21 @@ func New(appName string, location ...string) *Core {
 	conf.Client.Resolve = conf.Resolve
 	conf.Server.Resolve = conf.Resolve
 
+	// get loglevel override from env
+	loglevel := os.Getenv("CODECOMET_LOG_LEVEL")
+	loglevel = strings.TrimSpace(loglevel)
+
+	if loglevel != "" {
+		switch loglevel {
+		case "debug":
+			conf.Logger.Level = log.DebugLevel
+		case "trace":
+			conf.Logger.Level = log.TraceLevel
+		default:
+			conf.Logger.Level = defaultLogLevel
+		}
+	}
+
 	return conf
 }
 
@@ -53,10 +69,8 @@ type Core struct {
 	Telemetry *telemetry.Config `json:"telemetry,omitempty"`
 	Client    *network.Config   `json:"client,omitempty"`
 	Server    *network.Config   `json:"server,omitempty"`
-
-	Umask int `json:"umask,omitempty"`
-
-	location []string
+	location  []string
+	Umask     int `json:"umask,omitempty"`
 }
 
 func (obj *Core) Trust(ca ...string) {

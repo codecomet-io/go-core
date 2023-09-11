@@ -431,14 +431,14 @@ func consoleDefaultFormatContext(i interface{}) string {
 	if i == nil {
 		i = "core"
 	}
-	return colorize(fmt.Sprintf("%-6s", i), colorBold, false)
+	return colorize(fmt.Sprintf("%-15s", i), colorBold, false)
 }
 
 func consoleDefaultFormatMode(i interface{}) string {
-  if i == nil {
-    return ""
-  }
-  return colorize(fmt.Sprintf("%s: ", i), colorRed, false)
+	if i == nil {
+		return colorize("appint:", colorYellow, false)
+	}
+	return colorize(fmt.Sprintf("%6s: ", i), colorRed, false)
 }
 
 func consoleDefaultFormatMessage(i interface{}) string {

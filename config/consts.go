@@ -4,10 +4,13 @@ import (
 	"crypto/tls"
 	"time"
 
+	"go.codecomet.dev/core/filesystem"
 	"go.codecomet.dev/core/log"
 )
 
 const (
+	defaultDirPerms            = filesystem.DirPermissionsDefault
+	defaultFilePerms           = filesystem.FilePermissionsDefault
 	defaultLogLevel            = log.InfoLevel
 	defaultTLSClientMinVersion = tls.VersionTLS12
 	defaultTLSServerMinVersion = tls.VersionTLS13

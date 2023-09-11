@@ -83,7 +83,7 @@ func (com *Commander) PreExec(stdin io.Reader, args ...string) {
 		envs = append(envs, fmt.Sprintf("%s=%s", k, v))
 	}
 
-	log.Debug().Str("binary", com.bin).Strs("arguments", args).Strs("env", envs).Msg("Preparing Command")
+	log.Trace().Str("binary", com.bin).Strs("arguments", args).Strs("env", envs).Str("ctx", "exec/PreExec").Msg("Preparing Command")
 
 	command := exec.Command(com.bin, args...) //nolint:gosec
 
